@@ -87,9 +87,14 @@ public class CmppSender {
                         case MsgCommand.CMPP_DELIVER:
                             MsgDeliver msgDeliver = new MsgDeliver(data);
                             if (msgDeliver.getResult() == 0) {
-                                log.info("CMPP_DELIVER 序列号：" + head.getSequenceId() + "，是否消息回复" + (msgDeliver.getRegistered_Delivery() == 0 ? "不是,消息内容：" + msgDeliver.getMsg_Content() : "是，目的手机号：" + msgDeliver.getDest_terminal_Id())+"，消息内容是："+msgDeliver.getMsg_Content()+"<Msg_Id_report>:" + msgDeliver.getMsg_Id_report() + "<Stat>:" + msgDeliver.getStat() + "<Submit_time>" + msgDeliver.getSubmit_time() + "<Done_time>" + msgDeliver.getDone_time()
-                                        + "<Dest_terminal_Id>" + msgDeliver.getDest_terminal_Id() + "<SMSC_sequence>:" + msgDeliver.getSMSC_sequence()
-                                        + "<result>:" + msgDeliver.getResult());
+                                if (msgDeliver.getRegistered_Delivery() == 0) {
+                                    log.info("<Msg_Id>:" + msgDeliver.getMsg_Id() + "<Dest_Id>" + msgDeliver.getDest_Id() + "<SequenceId>:" + head.getSequenceId() + "<Dest_terminal_Id>:" + msgDeliver.getDest_terminal_Id() + "<Msg_Content>:" + msgDeliver.getMsg_Content() + "<Src_terminal_Id>:" + msgDeliver.getSrc_terminal_Id() + "<Registered_Delivery>" + msgDeliver.getRegistered_Delivery() + "<Msg_Length>" + msgDeliver.getMsg_Length());
+                                } else {
+                                    log.info("<Msg_Id_report>:" + msgDeliver.getMsg_Id_report() + "<Stat>:" + msgDeliver.getStat()
+                                            + "<Submit_time>" + msgDeliver.getSubmit_time() + "<Done_time>" + msgDeliver.getDone_time()
+                                            + "<Dest_terminal_Id>" + msgDeliver.getDest_terminal_Id() + "<SMSC_sequence>:" + msgDeliver.getSMSC_sequence()
+                                            + "<result>:" + msgDeliver.getResult());
+                                }
                             } else {
                                 log.info("CMPP_DELIVER 序列号：" + head.getSequenceId());
                             }
@@ -99,7 +104,8 @@ public class CmppSender {
                             msgDeliverResp.setSequenceId(MsgUtils.getSequence());
                             msgDeliverResp.setMsg_Id(msgDeliver.getMsg_Id());
                             msgDeliverResp.setResult(msgDeliver.getResult());
-                            sendMsg(msgDeliverResp.toByteArray());//进行回复
+                            //进行回复
+                            sendMsg(msgDeliverResp.toByteArray());
                             break;
                         case MsgCommand.CMPP_DELIVER_RESP:
                             log.info("CMPP_DELIVER_RESP 序列号：" + head.getSequenceId());

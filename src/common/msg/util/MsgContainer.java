@@ -9,12 +9,11 @@ import org.apache.commons.logging.LogFactory;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 /**
  * 短信接口容器，单例获得链接对象
@@ -84,7 +83,7 @@ public class MsgContainer {
      * @return
      */
     private static boolean connectISMG() {
-        log.info("请求连接到ISMG...");
+        log.info("request link to ISMG...");
         MsgConnect connect = new MsgConnect();
         //消息总长度，级总字节数:消息头+消息主体
         connect.setTotalLength(12 + MsgCommand.CMPP_CONNECT_LEN);
@@ -100,17 +99,24 @@ public class MsgContainer {
         connect.setVersion((byte) 0x20);
         List<byte[]> dataList = new ArrayList<byte[]>();
         dataList.add(connect.toByteArray());
-        return true;
+        boolean result = cmppSender(dataList);
+        return result;
     }
-    private static boolean cmppSender(List<byte[]> dataList){
+
+    /**
+     * 对请求的数据进行发送
+     *
+     * @param dataList
+     * @return
+     */
+    public static boolean cmppSender(List<byte[]> dataList) {
         CmppSender sender = new CmppSender(getSocketDOS(), getSocketDIS(), dataList);
         try {
             boolean success = sender.start();
-            boolean result = cmppSender(dataList);
-            if (result) {
-                log.info("请求连接到ISMG...连接成功！");
+            if (success) {
+                log.info("request success！");
             } else {
-                log.info("请求连接到ISMG...连接失败！");
+                log.info("request error！");
             }
             return success;
         } catch (Exception e) {
@@ -129,39 +135,130 @@ public class MsgContainer {
     }
 
     /**
-     * 短信发送，使用端口是7890，即长短信
-     * @param msg
-     * @param cusMsisdn
+     * 消息回复，或请求，例如链路检查、状态报告回复
+     *
+     * @param totalLength
+     * @param commandId   消息类型
      * @return
      */
-    public static boolean sendMsg(String msg, String cusMsisdn) {
+    public static boolean headISMG(int totalLength, int commandId) {
+        MsgHead head = new MsgHead();
+        //消息总长度，级总字节数:4+4+4(消息头)+(消息主体)
+        head.setTotalLength(totalLength);
+        head.setCommandId(commandId);
+        head.setSequenceId(MsgUtils.getSequence());
+
+        List<byte[]> dataList = new ArrayList<byte[]>();
+        dataList.add(head.toByteArray());
+        boolean result = cmppSender(dataList);
+        log.info(" request ===>" + commandId);
+        return result;
+    }
+
+    /**
+     * 链路检查
+     *
+     * @return
+     */
+    public static boolean activityTestISMG() {
+        return headISMG(12, MsgCommand.CMPP_ACTIVE_TEST);
+    }
+
+    /**
+     * 拆除与ISMG的链接
+     *
+     * @return
+     */
+    public static boolean cancelISMG() {
+        return headISMG(12, MsgCommand.CMPP_TERMINATE);
+    }
+
+    /**
+     * 获取状态报告和回复信息
+     *
+     * @return
+     */
+    public static boolean deliverResp() {
         try {
-            //短短信
-            if (msg.getBytes("utf-8").length < 140) {
-                boolean result = sendShortMsg(msg, cusMsisdn);
-                int count = 0;
-                while (!result) {
-                    count++;
-                    result = sendShortMsg(msg, cusMsisdn);
-                    //如果再次连接次数超过两次则终止连接
-                    if (count >= (MsgConfig.getConnectCount() - 1)) {
-                        break;
-                    }
-                }
-                return result;
-            } else {//长短信
-                boolean result = sendLongMsg(msg, cusMsisdn);
-                int count = 0;
-                while (!result) {
-                    count++;
-                    result = sendLongMsg(msg, cusMsisdn);
-                    //如果再次连接次数超过两次则终止连接
-                    if (count >= (MsgConfig.getConnectCount() - 1)) {
-                        break;
-                    }
-                }
-                return result;
+            MsgHead head = new MsgHead();
+            //消息总长度，级总字节数:消息头+消息主体
+            head.setTotalLength(12 + MsgCommand.CMPP_DELIVER_LEN);
+            //标识创建连接
+            head.setCommandId(MsgCommand.CMPP_DELIVER);
+            //序列，由我们指定
+            head.setSequenceId(MsgUtils.getSequence());
+
+            List<byte[]> dataList = new ArrayList<byte[]>();
+            dataList.add(head.toByteArray());
+            final CmppSender sender = new CmppSender(getSocketDOS(), getSocketDIS(), dataList);
+            //获取状态5秒获取一次
+            Thread.sleep(5 * 1000);
+            sender.start();
+            return true;
+        } catch (Exception e) {
+            try {
+                out.close();
+                in.close();
+                out = null;
+                in = null;
+            } catch (IOException e1) {
+                out = null;
+                in = null;
             }
+            log.error("deliver :" + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 短信发送，使用端口是7890，即长短信
+     *
+     * @param list
+     * @return
+     */
+    public static boolean sendMsg(List<Map<String, String>> list, int sendType) {
+        try {
+            List<byte[]> dataList = new ArrayList<byte[]>();
+            for (int i = 0; i < list.size(); i++) {
+                Map<String, String> map = list.get(i);
+                String msg = map.get("MESSAGE");
+                String cusMsisdn = map.get("MOBILE");
+                String url = map.get("URL");
+                switch (sendType) {
+                    case 1:
+                        //短短信
+                        if (msg.getBytes("utf-8").length < 140) {
+                            sendShortMsg(msg, cusMsisdn, dataList);
+                        } else {
+                            sendLongMsg(msg, cusMsisdn, dataList);
+                        }
+                        break;
+                    case 2:
+                        int msgContent = 12 + 9 + 9 + url.getBytes("utf-8").length + 3 + msg.getBytes("utf-8").length + 3;
+                        if (msgContent < 140) {
+                            sendShortWapPushMsg(url, msg, cusMsisdn);
+                        } else {
+                            sendLongWapPushMsg(url, msg, cusMsisdn);
+                        }
+                        break;
+                    default:
+                        dataList = null;
+                }
+            }
+            if (dataList.size() <= 0) {
+                return false;
+            }
+            boolean result = cmppSender(dataList);
+            int count = 0;
+            while (!result) {
+                count++;
+                result = cmppSender(dataList);
+                //如果再次连接次数超过两次则终止连接
+                if (count >= (MsgConfig.getConnectCount() - 1)) {
+                    break;
+                }
+            }
+            return result;
         } catch (Exception e) {
             try {
                 out.close();
@@ -180,7 +277,7 @@ public class MsgContainer {
      * @param cusMsisdn 短信
      * @return
      */
-    public static boolean sendWapPushMsg(String url, String desc, String cusMsisdn) {
+   /* public static boolean sendWapPushMsg(String url, String desc, String cusMsisdn) {
         try {
             int msgContent = 12 + 9 + 9 + url.getBytes("utf-8").length + 3 + desc.getBytes("utf-8").length + 3;
             if (msgContent < 140) {
@@ -215,14 +312,14 @@ public class MsgContainer {
             log.error("发送web push短信:" + e.getMessage());
             return false;
         }
-    }
+    }*/
 
     /**
      * 发送短短信
      *
      * @return
      */
-    private static boolean sendShortMsg(String msg, String cusMsisdn) {
+    private static List<byte[]> sendShortMsg(String msg, String cusMsisdn, List<byte[]> dataList) {
         try {
             int seq = MsgUtils.getSequence();
             byte[] msgByte = msg.getBytes("gb2312");
@@ -247,17 +344,9 @@ public class MsgContainer {
             submit.setMsgLength((byte) msgByte.length);
             submit.setMsgContent(msgByte);
 
-            List<byte[]> dataList = new ArrayList<byte[]>();
             dataList.add(submit.toByteArray());
-            CmppSender sender = new CmppSender(getSocketDOS(), getSocketDIS(), dataList);
-            log.info("向手机号码：" + cusMsisdn + "下发短短信，序列号为:" + seq);
-            boolean success = sender.start();
-            if (success) {
-                log.info("发送成功：" + cusMsisdn);
-            } else {
-                log.info("发送失败：" + cusMsisdn);
-            }
-            return true;
+            log.info("to send mobile：" + cusMsisdn + ",content:"+msg+",SequenceId:" + seq);
+            return dataList;
         } catch (Exception e) {
             try {
                 out.close();
@@ -265,7 +354,7 @@ public class MsgContainer {
                 out = null;
             }
             log.error("发送短短信" + e.getMessage());
-            return false;
+            return null;
         }
     }
 
@@ -274,18 +363,17 @@ public class MsgContainer {
      *
      * @return
      */
-    private static boolean sendLongMsg(String msg, String cusMsisdn) {
+    private static List<byte[]> sendLongMsg(String msg, String cusMsisdn, List<byte[]> dataList) {
         try {
             byte[] allByte = msg.getBytes("iso-10646-ucs-2");
 //			byte[] allByte=msg.getBytes("UTF-16BE");
-            List<byte[]> dataList = new ArrayList<byte[]>();
             int msgLength = allByte.length;
             int maxLength = 140;
             int msgSendCount = msgLength % (maxLength - 6) == 0 ? msgLength / (maxLength - 6) : msgLength / (maxLength - 6) + 1;
             //短信息内容头拼接
             byte[] msgHead = new byte[6];
             Random random = new Random();
-            random.nextBytes(msgHead); // 为了随机填充msgHead[3]
+            random.nextBytes(msgHead);
             msgHead[0] = 0x05;
             msgHead[1] = 0x00;
             msgHead[2] = 0x03;
@@ -331,10 +419,8 @@ public class MsgContainer {
                 submit.setMsgContent(sendMsg);
                 dataList.add(submit.toByteArray());
             }
-            CmppSender sender = new CmppSender(getSocketDOS(), getSocketDIS(), dataList);
-            sender.start();
             log.info("向" + cusMsisdn + "下发长短信，序列号为:" + seqId);
-            return true;
+            return dataList;
         } catch (Exception e) {
             try {
                 out.close();
@@ -342,70 +428,10 @@ public class MsgContainer {
                 out = null;
             }
             log.error("发送长短信" + e.getMessage());
-            return false;
+            return null;
         }
     }
 
-    /**
-     * 拆除与ISMG的链接
-     *
-     * @return
-     */
-    public static boolean cancelISMG() {
-        try {
-            MsgHead head = new MsgHead();
-            head.setTotalLength(12);//消息总长度，级总字节数:4+4+4(消息头)+6+16+1+4(消息主体)
-            head.setCommandId(MsgCommand.CMPP_TERMINATE);//标识创建连接
-            head.setSequenceId(MsgUtils.getSequence());//序列，由我们指定
-
-            List<byte[]> dataList = new ArrayList<byte[]>();
-            dataList.add(head.toByteArray());
-            CmppSender sender = new CmppSender(getSocketDOS(), getSocketDIS(), dataList);
-            sender.start();
-            getSocketInstance().close();
-            out.close();
-            in.close();
-            return true;
-        } catch (Exception e) {
-            try {
-                out.close();
-                in.close();
-            } catch (IOException e1) {
-                in = null;
-                out = null;
-            }
-            log.error("拆除与ISMG的链接" + e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * 链路检查
-     *
-     * @return
-     */
-    public static boolean activityTestISMG() {
-        try {
-            MsgHead head = new MsgHead();
-            head.setTotalLength(12);//消息总长度，级总字节数:4+4+4(消息头)+6+16+1+4(消息主体)
-            head.setCommandId(MsgCommand.CMPP_ACTIVE_TEST);//标识创建连接
-            head.setSequenceId(MsgUtils.getSequence());//序列，由我们指定
-
-            List<byte[]> dataList = new ArrayList<byte[]>();
-            dataList.add(head.toByteArray());
-            CmppSender sender = new CmppSender(getSocketDOS(), getSocketDIS(), dataList);
-            sender.start();
-            return true;
-        } catch (Exception e) {
-            try {
-                out.close();
-            } catch (IOException e1) {
-                out = null;
-            }
-            log.error("链路检查" + e.getMessage());
-            return false;
-        }
-    }
 
     /**
      * 发送web push 短短信
@@ -415,7 +441,7 @@ public class MsgContainer {
      * @param cusMsisdn 短信
      * @return
      */
-    private static boolean sendShortWapPushMsg(String url, String desc, String cusMsisdn) {
+    private static List<byte[]> sendShortWapPushMsg(String url, String desc, String cusMsisdn) {
         try {
             //length 12
             byte[] szWapPushHeader1 = {0x0B, 0x05, 0x04, 0x0B, (byte) 0x84, 0x23, (byte) 0xF0, 0x00, 0x03, 0x03, 0x01, 0x01};
@@ -461,10 +487,8 @@ public class MsgContainer {
             submit.setMsgContent(sendMsg);
             List<byte[]> dataList = new ArrayList<byte[]>();
             dataList.add(submit.toByteArray());
-            CmppSender sender = new CmppSender(getSocketDOS(), getSocketDIS(), dataList);
-            sender.start();
             log.info("向" + cusMsisdn + "下发web push短短信，序列号为:" + seq);
-            return true;
+            return dataList;
         } catch (Exception e) {
             try {
                 out.close();
@@ -472,7 +496,7 @@ public class MsgContainer {
                 out = null;
             }
             log.error("发送web push短短信" + e.getMessage());
-            return false;
+            return null;
         }
     }
 
@@ -484,7 +508,7 @@ public class MsgContainer {
      * @param cusMsisdn 短信
      * @return
      */
-    private static boolean sendLongWapPushMsg(String url, String desc, String cusMsisdn) {
+    private static List<byte[]> sendLongWapPushMsg(String url, String desc, String cusMsisdn) {
         try {
             List<byte[]> dataList = new ArrayList<byte[]>();
             //length 12
@@ -551,10 +575,8 @@ public class MsgContainer {
                 submit.setMsgContent(sendMsg);
                 dataList.add(submit.toByteArray());
             }
-            CmppSender sender = new CmppSender(getSocketDOS(), getSocketDIS(), dataList);
-            sender.start();
             log.info("向" + cusMsisdn + "下发web pus长短信，序列号为:" + seqId);
-            return true;
+            return dataList;
         } catch (Exception e) {
             try {
                 out.close();
@@ -562,42 +584,18 @@ public class MsgContainer {
                 out = null;
             }
             log.error("发送web push长短信" + e.getMessage());
-            return false;
+            return null;
         }
     }
-    /**
-     * 获取状态报告和回复信息
-     * @return
-     */
-    public static boolean deliverResp() {
-        try {
-            MsgHead head = new MsgHead();
-            //消息总长度，级总字节数:消息头+消息主体
-            head.setTotalLength(12 + MsgCommand.CMPP_DELIVER_LEN);
-            //标识创建连接
-            head.setCommandId(MsgCommand.CMPP_DELIVER);
-            //序列，由我们指定
-            head.setSequenceId(MsgUtils.getSequence());
 
-            List<byte[]> dataList = new ArrayList<byte[]>();
-            dataList.add(head.toByteArray());
-            CmppSender sender = new CmppSender(getSocketDOS(), getSocketDIS(), dataList);
-            //获取状态5秒获取一次
-            Thread.sleep(5 * 1000);
-            sender.start();
-            return true;
-        } catch (Exception e) {
-            try {
-                out.close();
-                in.close();
-                out = null;
-                in = null;
-            } catch (IOException e1) {
-                out = null;
-                in = null;
-            }
-            log.error("deliver :" + e.getMessage());
-            return false;
-        }
+    public static void main(String[] args) {
+        /*Map<String, String> map = new HashMap<String, String>();
+        map.put("MESSAGE", "【大街网】123");
+        map.put("MOBILE","13264015025");
+        List<Map<String, String>> list = new ArrayList<Map<String, String>>();
+        list.add(map);
+        boolean result = MsgContainer.sendMsg(list, 1);*/
+        boolean result = MsgContainer.deliverResp();
+        System.out.println(result);
     }
 }

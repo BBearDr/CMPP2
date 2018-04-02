@@ -12,17 +12,8 @@ import java.io.IOException;
  * @date 2018/03/26
  */
 public class Test {
-    //MsgContainer msgContainer = new MsgContainer();
-  /*  DataInputStream socketDIS = MsgContainer.getSocketDIS();
-    DataOutputStream socketDOS = MsgContainer.getSocketDOS();*/
-
     public static void main(String[] args) {
-        Test test = new Test();
-        try {
-            test.test();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+
     }
 
    /* private byte[] getInData() throws IOException {
@@ -46,16 +37,6 @@ public class Test {
         }
     }*/
 
-    private void test() throws Exception {
-      new Thread(new Runnable() {
-          @Override
-          public void run() {
-              while (true) {
-                  MsgContainer.deliverResp();
-              }
-          }
-      }).start();
-    }
 
     /*private void test1() {
 *//*        boolean sendMsg = MsgContainer.sendMsg("【大街网】测试扩展码", "13264015025");
