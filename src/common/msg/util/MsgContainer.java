@@ -339,7 +339,7 @@ public class MsgContainer {
             submit.setMsgFmt((byte) 0x0f);
             submit.setMsgSrc(MsgConfig.getSpId());
             //+扩展码
-            submit.setSrcId(MsgConfig.getSpCode() + "1234");
+            submit.setSrcId(MsgConfig.getSpCode()+"0258");
             submit.setDestTerminalId(cusMsisdn);
             submit.setMsgLength((byte) msgByte.length);
             submit.setMsgContent(msgByte);
@@ -589,13 +589,22 @@ public class MsgContainer {
     }
 
     public static void main(String[] args) {
-        /*Map<String, String> map = new HashMap<String, String>();
-        map.put("MESSAGE", "【大街网】123");
-        map.put("MOBILE","13264015025");
+        Map<String, String> map = new HashMap<String, String>();
+        map.put("MESSAGE", "【大街网】测试验证码");
+        map.put("MOBILE","18732190340");
         List<Map<String, String>> list = new ArrayList<Map<String, String>>();
         list.add(map);
-        boolean result = MsgContainer.sendMsg(list, 1);*/
-        boolean result = MsgContainer.deliverResp();
+        boolean result = MsgContainer.sendMsg(list, 1);
         System.out.println(result);
+/*        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while(true){
+                    boolean result = MsgContainer.deliverResp();
+                }
+            }
+        }).start();*/
+  /*      boolean result = MsgContainer.deliverResp();
+        System.out.println(result);*/
     }
 }

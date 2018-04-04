@@ -99,7 +99,7 @@ public class CmppSender {
                                 log.info("CMPP_DELIVER 序列号：" + head.getSequenceId());
                             }
                             MsgDeliverResp msgDeliverResp = new MsgDeliverResp();
-                            msgDeliverResp.setTotalLength(12 + 8 + 4);
+                            msgDeliverResp.setTotalLength(12 + 8 + 1);
                             msgDeliverResp.setCommandId(MsgCommand.CMPP_DELIVER_RESP);
                             msgDeliverResp.setSequenceId(MsgUtils.getSequence());
                             msgDeliverResp.setMsg_Id(msgDeliver.getMsg_Id());
@@ -125,7 +125,7 @@ public class CmppSender {
                         case MsgCommand.CMPP_ACTIVE_TEST:
                             log.info("CMPP_ACTIVE_TEST 序列号：" + head.getSequenceId());
                             MsgActiveTestResp msgActiveTestResp = new MsgActiveTestResp();
-                            msgActiveTestResp.setTotalLength(12 + 8 + 4);
+                            msgActiveTestResp.setTotalLength(12 + 1);
                             msgActiveTestResp.setCommandId(MsgCommand.CMPP_ACTIVE_TEST_RESP);
                             msgActiveTestResp.setSequenceId(MsgUtils.getSequence());
                             msgActiveTestResp.setReserved((byte) 1);
